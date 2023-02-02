@@ -1,5 +1,8 @@
 # BricksBeater——超级解压的打砖块游戏
 
+![Stars](https://img.shields.io/github/stars/zouhuidong/BricksBeater)
+![Forks](https://img.shields.io/github/forks/zouhuidong/BricksBeater)
+![Downloads](https://img.shields.io/github/downloads/zouhuidong/BricksBeater/total)
 
 ## 简介
 
@@ -19,7 +22,17 @@ Visual Studio 2022 & EasyX_20220901
 
 ## 游戏截图
 
-
+<div align=center>
+<img src="./screenshot/1.png">
+<img src="./screenshot/2.png">
+<br>
+<img src="./screenshot/3.png">
+<img src="./screenshot/4.png">
+<br>
+<img src="./screenshot/5.png">
+<img src="./screenshot/6.png">
+<br>
+</div>
 
 ## 想自制关卡？
 
