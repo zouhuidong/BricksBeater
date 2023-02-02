@@ -18,7 +18,7 @@ Visual Studio 2022 & EasyX_20220901
 
 ## 下载地址
 
-
+[下载 Windows x64 版本](https://github.com/zouhuidong/BricksBeater/releases/)
 
 ## 游戏截图
 
