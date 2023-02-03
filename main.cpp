@@ -8,6 +8,9 @@
 
 /////////////////// 常量定义 ///////////////////
 
+// 圆周率
+#define PI					3.1415926f
+
 // 程序界面属性
 #define STATE_BAR_HEIGHT		150		// 状态栏高度
 #define WINDOW_BOTTOM_MARGIN	187		// 窗口底部边距（留白）
@@ -28,10 +31,10 @@
 #define BALL_RADIUS			3		// 小球半径
 #define BALL_MAX_NUM		1024	// 最大小球数量
 #define BALL_LIFE_NUM		4		// 球有几条命
-#define BALL_SPEED			3.6f	// 小球速度
+#define BALL_SPEED			2.4f	// 小球速度
 
 // 算法设置
-#define PROCESS_REPEAT		2		// 在一帧内计算几次游戏状态
+#define PROCESS_REPEAT		3		// 在一帧内计算几次游戏状态
 
 // 方块颜色
 #define COLOR_WALL			RGB(163, 163, 162)	// 墙：灰色
@@ -60,7 +63,7 @@
 #define PROBABILITY_HEART		5
 
 // 道具下落速度
-#define PROP_DROP_SPEED			0.3f
+#define PROP_DROP_SPEED			0.2f
 
 // 碰撞结果
 #define HIT_NONE			0	// 未发生任何碰撞
@@ -575,8 +578,96 @@ float GetDistance_PointToLine(
 	return fabsf(k * x - y - k * x1 + y1) / sqrtf(k * k + 1);
 }
 
+// 获取矩形到圆心的最小距离
+float GetDistance_RectToCircle(float x, float y, RECT rct)
+{
+	float x_rct, y_rct;	// 保存矩形内到圆心最近的点
+	if (x >= rct.left && x <= rct.right)
+		x_rct = x;
+	else
+		x_rct = (float)(fabsf(x - rct.left) < fabsf(x - rct.right) ? rct.left : rct.right);
+	if (y >= rct.top && y <= rct.bottom)
+		y_rct = y;
+	else
+		y_rct = (float)(fabsf(y - rct.top) < fabsf(y - rct.bottom) ? rct.top : rct.bottom);
+
+	float dx = x - x_rct;
+	float dy = y - y_rct;
+
+	return sqrtf(dx * dx + dy * dy);
+}
+
+// 根据圆的轨迹直线，获取圆与某点相切时的圆心坐标
+// 返回是否存在相切
+bool GetTangentCirclePoint(
+	float x0,		// 切点坐标
+	float y0,
+	float x1,		// 圆心轨迹直线上的一点（更早运动到的点）
+	float y1,
+	float x2,		// 圆心轨迹直线上的另一点（其实运动不到的点）
+	float y2,
+	float r,		// 圆半径
+	float* p_out_x,	// 输出圆心坐标
+	float* p_out_y
+)
+{
+	// 获取点到直线的距离
+	float l = GetDistance_PointToLine(x0, y0, x1, y1, x2, y2);
+	if (l > r)	// 不相切
+		return false;
+
+	// 斜率不存在时
+	if (fabsf(x1 - x2) < 0.0000001f)
+	{
+		// 计算相切时圆心与切点的竖直距离
+		float d = sqrtf(r * r - l * l);
+
+		// 求出两组解
+		float _y1 = y0 + d;
+		float _y2 = y0 - d;
+
+		// 保留离 (x1, y1) 更近的解
+		float _y_closer = fabsf(y1 - _y1) < fabsf(y1 - _y2) ? _y1 : _y2;
+
+		*p_out_x = x1;
+		*p_out_y = _y_closer;
+
+		return true;
+	}
+
+	// 圆心轨迹直线方程：y - y1 = (y2 - y1) / (x2 - x1) * (x - x1)
+	// 即：y = kx - kx1 + y1
+	// 圆的方程：(x - x0) ^ 2 + (y - y0) ^ 2 = r ^ 2
+	// 代入 y 得二次函数，如下。
+
+	float k = (y2 - y1) / (x2 - x1);	// 直线斜率
+	float m = -k * x1 + y1 - y0;		// 部分常数
+	float a = k * k + 1;				// 二次函数的 abc 系数
+	float b = 2 * (k * m - x0);
+	float c = x0 * x0 + m * m - r * r;
+	float delta = b * b - 4 * a * c;	// 判别式
+	if (delta < 0)						// 无解
+		return false;
+	float sqrt_delta = sqrtf(delta);	// 判别式开根号
+	float _x1 = (-b + sqrt_delta) / (2 * a);		// 两个根
+	float _x2 = (-b - sqrt_delta) / (2 * a);
+
+	// 保留离 (x1, y1) 更近的解
+	float _x_closer = fabsf(x1 - _x1) < fabsf(x1 - _x2) ? _x1 : _x2;
+	float _y = k * _x_closer - k * x1 + y1;
+
+	*p_out_x = _x_closer;
+	*p_out_y = _y;
+
+	return true;
+}
+
 // 单点碰撞处理
 int SinglePointHit(
+	float cx,		// 圆心坐标
+	float cy,
+	float last_cx,
+	float last_cy,
 	float x,		// 用于碰撞检测的坐标
 	float y,
 	float last_x,	// 上一帧的坐标（和 x, y 对应）
@@ -659,14 +750,8 @@ int SinglePointHit(
 			}
 
 			// 否则哪边空选哪边
-			else if (left)
-			{
-				fVertex_X = (float)rct.left;
-			}
-			else if (right)
-			{
-				fVertex_X = (float)rct.right;
-			}
+			else if (left)		fVertex_X = (float)rct.left;
+			else if (right)		fVertex_X = (float)rct.right;
 
 			// 要是两边都没空地，就不可能发生顶点碰撞
 			else
@@ -686,55 +771,70 @@ int SinglePointHit(
 					(fabsf(y - rct.top) < fabsf(y - rct.bottom)) ?
 					(float)rct.top : (float)rct.bottom;
 			}
-			else if (up)
-			{
-				fVertex_Y = (float)rct.top;
-			}
-			else if (down)
-			{
-				fVertex_Y = (float)rct.bottom;
-			}
+			else if (up)		fVertex_Y = (float)rct.top;
+			else if (down)		fVertex_Y = (float)rct.bottom;
 			else
 			{
 				vertex_judge_flag = false;
 			}
 		}
+		else
+		{
+			vertex_judge_flag = false;
+		}
 	}
 
 	// 优先判断是不是顶点碰撞
 	bool isVertexCollision = false;	// 标记是否发生顶点碰撞
-	if (vertex_judge_flag)
+	if (vertex_judge_flag)			// 处理顶点碰撞问题
 	{
-		// 顶点到直线距离小于半径，则会发生定点碰撞
-		float fdVertexToLine = GetDistance_PointToLine(fVertex_X, fVertex_Y, x, y, last_x, last_y);
-		if (fdVertexToLine < BALL_RADIUS)
+		// 可以近似取两帧坐标中点作为碰撞时的小球圆心
+		//float fMidPointX = (cx + last_cx) / 2;
+		//float fMidPointY = (cy + last_cy) / 2;
+
+		// 获取碰撞时的小球圆心坐标（即与顶点相切时的坐标）
+		float fCollisionX, fCollisionY;
+		if (!GetTangentCirclePoint(fVertex_X, fVertex_Y, last_cx, last_cy, cx, cy, BALL_RADIUS, &fCollisionX, &fCollisionY))
 		{
-			isVertexCollision = true;
-
-			// 处理定点碰撞
-			// 近似取两帧坐标中点作为碰撞发生点（小球和顶点的相切点）
-			float fCollisionX = (x + last_x) / 2;
-			float fCollisionY = (y + last_y) / 2;
-
-			// 连接相切时的小球圆心和顶点，这就是反弹前后，小球速度的对称轴
-
-			float f_dxAxis = fCollisionX - fVertex_X;	// 对称轴直线上的坐标差
-			float f_dyAxis = fCollisionY - fVertex_Y;
-
-			// 求对称轴角度
-			float f_radianAxis = atan2f(f_dyAxis, f_dxAxis);
-
-			// 求小球速度角度
-			float f_radianOldV = atan2f(*vy, *vx);
-
-			// 将小球速度沿对称轴翻折，求得新的速度角度
-			float f_radianNewV = 2 * f_radianAxis - f_radianOldV;
-
-			// 求速度
-			*vx = cosf(f_radianNewV) * BALL_SPEED;
-			*vy = sinf(f_radianNewV) * BALL_SPEED;
+			// 没有相切，说明顶点碰撞不成立
+			goto tag_after_vertex_colision;
 		}
+
+		// 如果是真的相切，则相切时矩形到圆心的最近距离应该等于小球半径
+		// 但如果此时小于半径，那么说明是假相切
+		if (GetDistance_RectToCircle(fCollisionX, fCollisionY, rct) < BALL_RADIUS - 0.2f /* 允许一点误差 */)
+		{
+			goto tag_after_vertex_colision;
+		}
+
+		// 计算碰撞时，小球圆心到碰撞点的坐标差
+		float f_dx = fCollisionX - fVertex_X;
+		float f_dy = fCollisionY - fVertex_Y;
+
+		// 求反射面弧度
+		float f_radianReflectingSurface = atan2f(f_dy, f_dx);
+
+		// 求法线弧度
+		float f_radianNormal = f_radianReflectingSurface + PI / 2 /* 或 - PI / 2 */;
+
+		// 求合法入射弧度范围
+		float f_radianIncidenceMin = f_radianReflectingSurface - PI / 2;	// [-180°, 0]
+		float f_radianIncidenceMax = f_radianReflectingSurface + PI / 2;	// [0, 180°]
+
+		// 求小球入射角度
+		float f_radianIncidence = atan2f(*vy, *vx);
+
+		// 将小球速度沿法线对称，求得新的速度角度
+		float f_radianReflection = 2 * f_radianNormal - f_radianIncidence;
+
+		// 求速度
+		*vx = cosf(f_radianReflection) * BALL_SPEED;
+		*vy = sinf(f_radianReflection) * BALL_SPEED;
+
+		isVertexCollision = true;	// 标记发生顶点碰撞
 	}
+
+tag_after_vertex_colision:
 
 	// 已完成顶点碰撞
 	if (isVertexCollision)
@@ -770,7 +870,8 @@ int SinglePointHit(
 	}
 
 	// 播放碰撞声
-	if (return_flag)
+	//if (return_flag != HIT_NONE)
+	if (return_flag == HIT_VERTEX)
 	{
 		PlayHitSound(false);
 	}
@@ -799,6 +900,10 @@ int BasicHit(Ball* ball, RECT rct, bool is_board, bool left = true, bool up = tr
 	for (int i = 0; i < 4; i++)
 	{
 		if (return_flag = SinglePointHit(
+			ball->x,
+			ball->y,
+			last_x,
+			last_y,
 			ball->x + pfOffset[i][0],
 			ball->y + pfOffset[i][1],
 			last_x + pfOffset[i][0],
@@ -814,6 +919,13 @@ int BasicHit(Ball* ball, RECT rct, bool is_board, bool left = true, bool up = tr
 		{
 			return return_flag;
 		}
+	}
+
+	// 发生了碰撞，那么就要把小球从墙里“拔”出来（回到上一帧的位置），避免穿墙效果
+	if (return_flag != HIT_NONE)
+	{
+		ball->x = last_x;
+		ball->y = last_y;
 	}
 
 	return return_flag;
@@ -986,8 +1098,8 @@ void BallProcess()
 			BallHit(&g_pstBalls[i]);
 
 			// 小球运动处理
-			g_pstBalls[i].x += g_pstBalls[i].vx + rand() % 10 / 100.f /* 添加随机扰动，防止在某区域反弹死循环 */;
-			g_pstBalls[i].y += g_pstBalls[i].vy + rand() % 10 / 100.f;
+			g_pstBalls[i].x += g_pstBalls[i].vx + rand() % 10 / 1000.f /* 添加随机扰动，防止在某区域反弹死循环 */;
+			g_pstBalls[i].y += g_pstBalls[i].vy + rand() % 10 / 1000.f;
 		}
 	}
 
