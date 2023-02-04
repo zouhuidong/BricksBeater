@@ -887,14 +887,14 @@ tag_after_vertex_colision:
 
 }// SinglePointHit
 
-// 初步检测碰撞、然后处理碰撞
+// 单个碰撞箱和单个小球的碰撞处理
 // ball						小球
 // rct						碰撞箱区域
 // is_board					是否为挡板碰撞判定
 // left, up, right, down	该碰撞箱四周分别是否有活动空间
 //
 // 返回值：参见 HIT_ 系列宏
-int CheckHit(Ball* ball, RECT rct, bool is_board, bool left = true, bool up = true, bool right = true, bool down = true)
+int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bool up = true, bool right = true, bool down = true)
 {
 	// 得到小球上一帧的坐标
 	float last_x = (ball->x - ball->vx);
@@ -974,18 +974,18 @@ bool IsEmptyBlock(int id)
 	return id < 0 || g_pstMap[id].type == EMPTY;
 }
 
-// 所有小球的碰撞处理（使小球反弹，删除被碰撞砖块）
+// 小球的碰撞处理（使小球反弹，删除被碰撞砖块）
 // 以及判定小球出界
-void AllBallHit(Ball* ball)
+void SingleBallHit(Ball* ball)
 {
 	// 边界碰撞判定
 	int border_thickness = 100;		// 边界已设置厚度，防止飞出
 	RECT rctLeft = { -border_thickness,0,1,getheight() };
 	RECT rctRight = { g_nMapW * SIDE_LEN - 1,0,g_nMapW * SIDE_LEN + border_thickness,getheight() };
 	RECT rctTop = { -border_thickness,-border_thickness,g_nMapW * SIDE_LEN + border_thickness,1 };
-	CheckHit(ball, rctLeft, false);
-	CheckHit(ball, rctRight, false);
-	CheckHit(ball, rctTop, false);
+	SingleBrick_BallHit(ball, rctLeft, false);
+	SingleBrick_BallHit(ball, rctRight, false);
+	SingleBrick_BallHit(ball, rctTop, false);
 
 	// 出界判定
 	if (ball->y > getheight() - STATE_BAR_HEIGHT)
@@ -1033,7 +1033,7 @@ void AllBallHit(Ball* ball)
 		{
 			RECT rct = g_pstMap[current].rct;		// 当前方块碰撞箱
 
-			int hit_flag = CheckHit(
+			int hit_flag = SingleBrick_BallHit(
 				ball,
 				rct,
 				false,
@@ -1068,10 +1068,10 @@ void AllBallHit(Ball* ball)
 		g_nBoardCenterX + BOARD_HALF_WIDTH,
 		BOARD_Y + BOARD_HALF_THICKNESS
 	};
-	CheckHit(ball, rctBoard, true);
+	SingleBrick_BallHit(ball, rctBoard, true);
 }
 
-// 小球处理
+// 所有小球的处理
 // 
 // 功能：
 // + 维持小球运动
@@ -1079,7 +1079,7 @@ void AllBallHit(Ball* ball)
 // + 判定小球出界死亡
 // + 检查小球是不是都死了，以便上球
 // + 判定球空人亡（失败）
-void BallProcess()
+void AllBallProcess()
 {
 	// 等球中
 	if (g_bBallWait)
@@ -1095,8 +1095,8 @@ void BallProcess()
 		{
 			isAnyBall = true;
 
-			// 小球碰撞处理
-			AllBallHit(&g_pstBalls[i]);
+			// 单个小球碰撞处理
+			SingleBallHit(&g_pstBalls[i]);
 
 			// 小球运动处理
 			g_pstBalls[i].x += g_pstBalls[i].vx + rand() % 10 / 100.f /* 添加随机扰动，防止在某区域反弹死循环 */;
@@ -1329,7 +1329,7 @@ void UserInputProcess()
 // 游戏过程函数
 void GameProcess()
 {
-	BallProcess();		// 处理小球
+	AllBallProcess();		// 处理小球
 	PropProcess();		// 处理道具
 	CheckSuccess();		// 胜利判定
 }
