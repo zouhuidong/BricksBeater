@@ -560,27 +560,6 @@ void DrawMenu()
 	outtextxy((getwidth() - w) / 2, BOARD_Y + BOARD_HALF_THICKNESS + 10, lpszTip);
 }
 
-// 获取点到直线的距离
-float GetDistance_PointToLine(
-	float x,	// 点的坐标
-	float y,
-	float x1,	// 直线上两个点的坐标
-	float y1,
-	float x2,
-	float y2
-)
-{
-	// 竖直线
-	if (x2 == x1)
-	{
-		return fabsf(x - x1);
-	}
-
-	// 有斜率
-	float k = (y2 - y1) / (x2 - x1);
-	return fabsf(k * x - y - k * x1 + y1) / sqrtf(k * k + 1);
-}
-
 // 获取点到矩形的最小距离
 float GetDistance_PointToRect(float x, float y, RECT rct)
 {
@@ -614,16 +593,14 @@ bool GetTangentCirclePoint(
 	float* p_out_y
 )
 {
-	// 获取点到直线的距离
-	float l = GetDistance_PointToLine(x0, y0, x1, y1, x2, y2);
-	if (l > r)	// 不相切
-		return false;
-
 	// 斜率不存在时
 	if (fabsf(x1 - x2) < 0.00001f)
 	{
 		// 计算相切时圆心与切点的竖直距离
-		float d = sqrtf(r * r - l * l);
+		float d2 = r * r - (x0 - x1) * (x0 - x1);
+		if (d2 < 0)
+			return false;
+		float d = sqrtf(d2);
 
 		// 求出两组解
 		float _y1 = y0 + d;
@@ -641,18 +618,18 @@ bool GetTangentCirclePoint(
 	// 圆心轨迹直线方程：y - y1 = (y2 - y1) / (x2 - x1) * (x - x1)
 	// 即：y = kx - kx1 + y1
 	// 圆的方程：(x - x0) ^ 2 + (y - y0) ^ 2 = r ^ 2
-	// 代入 y 得二次函数，如下。
+	// 联立得二次函数，如下。
 
-	float k = (y2 - y1) / (x2 - x1);	// 直线斜率
-	float m = -k * x1 + y1 - y0;		// 部分常数
-	float a = k * k + 1;				// 二次函数的 abc 系数
+	float k = (y2 - y1) / (x2 - x1);			// 直线斜率
+	float m = -k * x1 + y1 - y0;				// 部分常数
+	float a = k * k + 1;						// 二次函数的 abc 系数
 	float b = 2 * (k * m - x0);
 	float c = x0 * x0 + m * m - r * r;
-	float delta = b * b - 4 * a * c;	// 判别式
-	if (delta < 0)						// 无解
+	float delta = b * b - 4 * a * c;			// 判别式
+	if (delta < 0)								// 无解
 		return false;
-	float sqrt_delta = sqrtf(delta);	// 判别式开根号
-	float _x1 = (-b + sqrt_delta) / (2 * a);		// 两个根
+	float sqrt_delta = sqrtf(delta);			// 判别式开根号
+	float _x1 = (-b + sqrt_delta) / (2 * a);	// 两个根
 	float _x2 = (-b - sqrt_delta) / (2 * a);
 
 	// 保留离 (x1, y1) 更近的解
