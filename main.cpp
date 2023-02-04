@@ -65,8 +65,7 @@
 // 碰撞结果
 #define HIT_NONE			0	// 未发生任何碰撞
 #define HIT_NORMAL			1	// 发生一次普通碰撞（与矩形水平边或竖直边的碰撞）
-#define HIT_ABNORMAL		2	// 异常的普通碰撞（小球不慎进入了砖块群内部的碰撞）
-#define HIT_VERTEX			3	// 与矩形顶点发生了碰撞
+#define HIT_VERTEX			2	// 与矩形顶点发生了碰撞
 
 // 游戏状态
 #define GAME_WIN			1		// 赢
@@ -688,6 +687,24 @@ int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bo
 	float last_x = (ball->x - ball->vx);
 	float last_y = (ball->y - ball->vy);
 
+	// 如果小球不慎进入砖块内部，此时应该回到上一帧，并使速度反向（同时加以扰动）
+	if (ball->x >= rct.left && ball->x <= rct.right
+		&& ball->y >= rct.top && ball->y <= rct.bottom)
+	{
+		ball->x = last_x;
+		ball->y = last_y;
+		ball->vx *= -1 + rand() % 10 / 100.f;
+		ball->vy *= -1 + rand() % 10 / 100.f;
+	
+		// 对于挡板问题的特殊处理：直接跳出来
+		if (is_board)
+		{
+			ball->y = BOARD_Y - BOARD_HALF_THICKNESS - g_nBallRadius - 1;
+		}
+		
+		return HIT_NORMAL;
+	}
+
 	// 首先需要保证矩形和圆有重叠
 	if (!(GetDistance_PointToRect(ball->x, ball->y, rct) <= g_nBallRadius * 0.98f))
 	{
@@ -695,38 +712,24 @@ int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bo
 	}
 
 	int return_flag = HIT_NONE;
-	bool abnormal_flag = false;	// 异常碰撞标记
-
-	// 如果小球不慎进入砖块群内部（例如斜着打进内部的方块）
-	// 此时需要标记为异常，以使发生的碰撞不能消除方块
-	if (!(left || up || right || down))
-	{
-		left = right = up = down = true;
-		abnormal_flag = true;
-		//return_flag = HIT_ABNORMAL;
-	}
 
 	// 穿越碰撞箱边界标记
 	bool cross_left =
 		rct.left > ball->x
 		&& fabsf(ball->x - rct.left) <= g_nBallRadius
-		&& left
-		&& ball->vx > 0;
+		&& left;
 	bool cross_right =
 		ball->x > rct.right
 		&& fabsf(ball->x - rct.right) <= g_nBallRadius
-		&& right
-		&& ball->vx < 0;
+		&& right;
 	bool cross_top =
 		rct.top > ball->y
 		&& fabsf(ball->y - rct.top) <= g_nBallRadius
-		&& up
-		&& ball->vy > 0;
+		&& up;
 	bool cross_bottom =
 		ball->y > rct.bottom
 		&& fabsf(ball->y - rct.bottom) <= g_nBallRadius
-		&& down
-		&& ball->vy < 0;
+		&& down;
 
 	// 标记是否需要判断顶点碰撞
 	bool vertex_judge_flag = true;
@@ -812,10 +815,6 @@ int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bo
 	bool isVertexCollision = false;	// 标记是否发生顶点碰撞
 	if (vertex_judge_flag)			// 处理顶点碰撞问题
 	{
-		// 可以近似取两帧坐标中点作为碰撞时的圆心坐标
-		//float fMidPointX = (x + last_x) / 2;
-		//float fMidPointY = (y + last_y) / 2;
-
 		// 获取碰撞时的小球圆心坐标（即与顶点相切时的坐标）
 		float fCollisionX, fCollisionY;
 		if (!GetTangentCirclePoint(
@@ -912,12 +911,6 @@ tag_after_vertex_colision:
 		}
 	}
 
-	// 标记异常碰撞
-	if (abnormal_flag && return_flag != HIT_NONE)
-	{
-		return_flag = HIT_ABNORMAL;
-	}
-
 	// 播放碰撞声
 
 	// 非调试模式下，只要有碰撞就发出声音
@@ -937,8 +930,8 @@ tag_after_vertex_colision:
 	// 如果发生的是顶点碰撞，那么在前面就已经进行了相切位置修正，就不需要回溯坐标了
 	if (!isVertexCollision && return_flag != HIT_NONE)
 	{
-		ball->x = last_x;
-		ball->y = last_y;
+		ball->x = (last_x + ball->x) / 2;
+		ball->y = (last_y + ball->y) / 2;
 	}
 
 	return return_flag;
@@ -1061,8 +1054,7 @@ void SingleBallHit(Ball* ball)
 				continue;
 
 			// 发生有效碰撞时，清除砖块
-			if ((hit_flag == HIT_NORMAL || hit_flag == HIT_VERTEX)
-				&& g_pstMap[current].type == BRICK)
+			else if (g_pstMap[current].type == BRICK)
 			{
 				g_pstMap[current].type = EMPTY;
 
