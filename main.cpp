@@ -699,7 +699,7 @@ int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bo
 		// 对于挡板问题的特殊处理：直接跳出来
 		if (is_board)
 		{
-			ball->y = BOARD_Y - BOARD_HALF_THICKNESS - g_nBallRadius - 1;
+			ball->y = (float)(BOARD_Y - BOARD_HALF_THICKNESS - g_nBallRadius - 1);
 		}
 		
 		return HIT_NORMAL;
