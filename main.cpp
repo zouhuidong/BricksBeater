@@ -691,10 +691,10 @@ int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bo
 	if (ball->x >= rct.left && ball->x <= rct.right
 		&& ball->y >= rct.top && ball->y <= rct.bottom)
 	{
-		ball->x = last_x;
-		ball->y = last_y;
-		ball->vx *= -1 + rand() % 10 / 100.f;
-		ball->vy *= -1 + rand() % 10 / 100.f;
+		ball->x = (last_x + ball->x) / 2;
+		ball->y = (last_y + ball->y) / 2;
+		ball->vx *= -1 + rand() % 10 / 1000.f;
+		ball->vy *= -1 + rand() % 10 / 1000.f;
 	
 		// 对于挡板问题的特殊处理：直接跳出来
 		if (is_board)
