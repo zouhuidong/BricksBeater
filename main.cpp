@@ -90,11 +90,12 @@
 
 /////////////////// 全局变量 ///////////////////
 
-int g_nMapW;				// 地图宽（单位：方块）
-int g_nMapH;				// 地图高（单位：方块）
-int g_nLevelNum;			// 关卡数
-int g_nCurrentLevel = 0;	// 当前是第几关（从 0 开始）
+int g_nMapW;								// 地图宽（单位：方块）
+int g_nMapH;								// 地图高（单位：方块）
+int g_nLevelNum;							// 关卡数
+int g_nCurrentLevel;						// 当前是第几关（从 0 开始数）
 char*** g_pppszOriginalLevelMap;			// 各关卡原始地图
+bool g_bDebugMode;							// 是否处于调试模式（在配置文件中设置的）
 
 bool g_bInMenu = true;	// 是否还在主菜单
 
@@ -157,6 +158,8 @@ void InitResource()
 	g_nMapW = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("width"), 0);
 	g_nMapH = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("height"), 0);
 	g_nLevelNum = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("level_num"), 0);
+	g_nCurrentLevel = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("begin_level"), 1) - 1;
+	g_bDebugMode = GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("enable_debug_mode"), 0);
 
 	// 分配每个关卡的内存
 	g_pppszOriginalLevelMap = new char** [g_nLevelNum];
@@ -578,10 +581,10 @@ float GetDistance_PointToLine(
 	return fabsf(k * x - y - k * x1 + y1) / sqrtf(k * k + 1);
 }
 
-// 获取矩形到圆心的最小距离
-float GetDistance_RectToCircle(float x, float y, RECT rct)
+// 获取点到矩形的最小距离
+float GetDistance_PointToRect(float x, float y, RECT rct)
 {
-	float x_rct, y_rct;	// 保存矩形内到圆心最近的点
+	float x_rct, y_rct;	// 保存矩形内到目标点最近的点
 	if (x >= rct.left && x <= rct.right)
 		x_rct = x;
 	else
@@ -617,7 +620,7 @@ bool GetTangentCirclePoint(
 		return false;
 
 	// 斜率不存在时
-	if (fabsf(x1 - x2) < 0.0000001f)
+	if (fabsf(x1 - x2) < 0.00001f)
 	{
 		// 计算相切时圆心与切点的竖直距离
 		float d = sqrtf(r * r - l * l);
@@ -679,19 +682,38 @@ int BasicHit(
 )
 {
 	int return_flag = HIT_NONE;
+	bool abnormal_flag = false;	// 异常碰撞标记
 
-	// 如果小球不慎进入砖块群内部，需要标记为异常碰撞，此时发生的碰撞不能消除方块
+	// 如果小球不慎进入砖块群内部（例如斜着打进内部的方块）
+	// 此时需要标记为异常，以使发生的碰撞不能消除方块
 	if (!(left || up || right || down))
 	{
 		left = right = up = down = true;
-		return_flag = HIT_ABNORMAL;
+		abnormal_flag = true;
+		//return_flag = HIT_ABNORMAL;
 	}
 
 	// 穿越碰撞箱边界标记
-	bool cross_left = fabsf(x - rct.left) <= BALL_RADIUS && left;
-	bool cross_right = fabsf(x - rct.right) <= BALL_RADIUS && right;
-	bool cross_top = fabsf(y - rct.top) <= BALL_RADIUS && up;
-	bool cross_bottom = fabsf(y - rct.bottom) <= BALL_RADIUS && down;
+	bool cross_left =
+		rct.left > x
+		&& fabsf(x - rct.left) <= BALL_RADIUS
+		&& left
+		&& *pvx > 0;
+	bool cross_right =
+		x > rct.right
+		&& fabsf(x - rct.right) <= BALL_RADIUS
+		&& right
+		&& *pvx < 0;
+	bool cross_top =
+		rct.top > y
+		&& fabsf(y - rct.top) <= BALL_RADIUS
+		&& up
+		&& *pvy > 0;
+	bool cross_bottom =
+		y > rct.bottom
+		&& fabsf(y - rct.bottom) <= BALL_RADIUS
+		&& down
+		&& *pvy < 0;
 
 	// 标记是否需要判断顶点碰撞
 	bool vertex_judge_flag = true;
@@ -791,7 +813,7 @@ int BasicHit(
 
 		// 如果是真的相切，则相切时矩形到圆心的最近距离应该等于小球半径
 		// 但如果此时小于半径，那么说明是假相切
-		if (GetDistance_RectToCircle(fCollisionX, fCollisionY, rct) < BALL_RADIUS * 0.6f /* 允许一点误差 */)
+		if (GetDistance_PointToRect(fCollisionX, fCollisionY, rct) < BALL_RADIUS * 0.98f /* 允许一点误差 */)
 		{
 			goto tag_after_vertex_colision;
 		}
@@ -824,8 +846,7 @@ tag_after_vertex_colision:
 	// 已完成顶点碰撞
 	if (isVertexCollision)
 	{
-		if (return_flag != HIT_ABNORMAL)
-			return_flag = HIT_VERTEX;
+		return_flag = HIT_VERTEX;
 	}
 
 	// 基础碰撞
@@ -864,9 +885,23 @@ tag_after_vertex_colision:
 		}
 	}
 
+	// 标记异常碰撞
+	if (abnormal_flag && return_flag != HIT_NONE)
+	{
+		return_flag = HIT_ABNORMAL;
+	}
+
 	// 播放碰撞声
-	//if (return_flag != HIT_NONE)
-	if (return_flag == HIT_VERTEX)
+
+	// 非调试模式下，只要有碰撞就发出声音
+	if (!g_bDebugMode
+		&& return_flag != HIT_NONE)
+	{
+		PlayHitSound(false);
+	}
+
+	// 调试模式下，只有顶点碰撞发出声音
+	else if (return_flag == HIT_VERTEX)
 	{
 		PlayHitSound(false);
 	}
@@ -889,7 +924,7 @@ int CheckHit(Ball* ball, RECT rct, bool is_board, bool left = true, bool up = tr
 	float last_y = (ball->y - ball->vy);
 
 	// 首先需要保证矩形和圆有重叠
-	if (!(GetDistance_RectToCircle(ball->x, ball->y, rct) <= BALL_RADIUS * 0.98f))
+	if (!(GetDistance_PointToRect(ball->x, ball->y, rct) <= BALL_RADIUS * 0.98f))
 	{
 		return HIT_NONE;
 	}
