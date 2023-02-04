@@ -15,20 +15,17 @@
 #define STATE_BAR_HEIGHT		150		// 状态栏高度
 #define WINDOW_BOTTOM_MARGIN	187		// 窗口底部边距（留白）
 
-// 方块大小属性
-#define INNER_SIDE_LEN		7	// 方块内填充矩形边长
-#define INNER_INTERVAL		1	// 方块外周留空边距
-#define SIDE_LEN			(INNER_SIDE_LEN + 2 * INNER_INTERVAL)	// 方块总边长
+// 方块总边长
+#define SIDE_LEN	(g_nInnerSideLen + 2 * g_nInnerInterval)
 
 // 挡板属性
 #define BOARD_HALF_WIDTH		40		// 挡板半宽
 #define BOARD_HALF_THICKNESS	3		// 挡板半厚度
 #define BOARD_Y_DISTACE			100		// 挡板比地图底部低多少
-#define BOARD_Y					(g_nMapH * SIDE_LEN + BOARD_Y_DISTACE)	// 挡板 y 坐标
 #define BOARD_BALL_DISTANCE		16		// 待发射小球离挡板多远
+#define BOARD_Y					(g_nMapH * SIDE_LEN + BOARD_Y_DISTACE)	// 挡板 y 坐标
 
 // 小球属性
-#define BALL_RADIUS			3		// 小球半径
 #define BALL_MAX_NUM		1024	// 最大小球数量
 #define BALL_LIFE_NUM		4		// 球有几条命
 #define BALL_SPEED			2.4f	// 小球速度
@@ -90,12 +87,40 @@
 
 /////////////////// 全局变量 ///////////////////
 
+////////// 游戏基础设定和资源
+
 int g_nMapW;								// 地图宽（单位：方块）
 int g_nMapH;								// 地图高（单位：方块）
 int g_nLevelNum;							// 关卡数
 int g_nCurrentLevel;						// 当前是第几关（从 0 开始数）
 char*** g_pppszOriginalLevelMap;			// 各关卡原始地图
-bool g_bDebugMode;							// 是否处于调试模式（在配置文件中设置的）
+
+// 调试模式配置
+bool g_bDebugMode = false;					// 是否处于调试模式（在配置文件中设置的）
+bool g_bOnlyVertexCollisionSound = false;	// 只有小球与矩形顶点发生碰撞时才发出声音
+bool g_bBigScene = false;					// 大场景模式
+
+// 大场景模式配置
+int g_nInnerSideLen_BigScene = 16;			// 大场景模式下的方块内填充矩形边长
+int g_nBallRadius_BigScene = 10;			// 大场景模式下的小球半径
+
+// 方块大小属性
+int g_nInnerSideLen = 7;		// 方块内填充矩形边长
+int g_nInnerInterval = 1;		// 方块外周留空边距
+
+// 小球半径
+int g_nBallRadius = 3;
+
+// 图像资源
+IMAGE g_imgRestart;
+IMAGE g_img3X;
+IMAGE g_imgShoot3;
+IMAGE g_imgHeart;
+
+// “重新开始” 按钮区域
+RECT g_rctRestartBtn;
+
+//////////
 
 bool g_bInMenu = true;	// 是否还在主菜单
 
@@ -128,15 +153,6 @@ bool g_bBallWait;				// 是否正在等待发射小球
 
 int g_nRemainingBallNum;	// 还剩几个球
 
-// 图像资源
-IMAGE g_imgRestart;
-IMAGE g_img3X;
-IMAGE g_imgShoot3;
-IMAGE g_imgHeart;
-
-// “重新开始” 按钮区域
-RECT g_rctRestartBtn;
-
 // 道具
 struct Prop
 {
@@ -153,14 +169,31 @@ int g_nGeneratedPropNum;		// 已经生成的道具数量
 // 加载游戏资源
 void InitResource()
 {
-	// 加载关卡
-
+	// 读取配置
 	g_nMapW = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("width"), 0);
 	g_nMapH = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("height"), 0);
 	g_nLevelNum = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("level_num"), 0);
 	g_nCurrentLevel = GetIniFileInfoInt(SETTINGS_PATH, _T("game"), _T("begin_level"), 1) - 1;
-	g_bDebugMode = GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("enable_debug_mode"), 0);
 
+	g_bDebugMode = GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("enable_debug_mode"), 0);
+	if (g_bDebugMode)
+	{
+		g_bOnlyVertexCollisionSound = 
+			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("only_vertex_collision_sound"), 0);
+		g_bBigScene =
+			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("enable_big_scene"), 0);
+		g_nInnerSideLen_BigScene = 
+			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("big_scene_brick_inner_side_len"), 0);
+		g_nBallRadius_BigScene =
+			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("big_scene_ball_radius"), 0);
+	}
+	if (g_bBigScene)
+	{
+		g_nInnerSideLen = g_nInnerSideLen_BigScene;
+		g_nBallRadius = g_nBallRadius_BigScene;
+	}
+
+	// 加载关卡
 	// 分配每个关卡的内存
 	g_pppszOriginalLevelMap = new char** [g_nLevelNum];
 
@@ -372,10 +405,10 @@ void DrawMap()
 
 			setfillcolor(g_pstMap[i].color);
 			solidrectangle(
-				rct.left + INNER_INTERVAL,
-				rct.top + INNER_INTERVAL,
-				rct.right - INNER_INTERVAL - 1,
-				rct.bottom - INNER_INTERVAL - 1
+				rct.left + g_nInnerInterval,
+				rct.top + g_nInnerInterval,
+				rct.right - g_nInnerInterval - 1,
+				rct.bottom - g_nInnerInterval - 1
 			);
 		}
 	}
@@ -389,7 +422,7 @@ void DrawBall()
 	// 小球还没发射
 	if (g_bBallWait)
 	{
-		solidcircle(g_nBoardCenterX, BOARD_Y - BOARD_BALL_DISTANCE, BALL_RADIUS);
+		solidcircle(g_nBoardCenterX, BOARD_Y - BOARD_BALL_DISTANCE, g_nBallRadius);
 	}
 
 	// 小球运动中
@@ -399,7 +432,7 @@ void DrawBall()
 		{
 			if (g_pstBalls[i].alive)
 			{
-				solidcircle((int)g_pstBalls[i].x, (int)g_pstBalls[i].y, BALL_RADIUS);
+				solidcircle((int)g_pstBalls[i].x, (int)g_pstBalls[i].y, g_nBallRadius);
 			}
 		}
 	}
@@ -642,22 +675,25 @@ bool GetTangentCirclePoint(
 	return true;
 }
 
-// 基础碰撞处理（已经确定圆和矩形有重叠时）
-int BasicHit(
-	float x,		// 圆心坐标指针
-	float y,
-	float last_x,	// 上一帧的圆心坐标
-	float last_y,
-	float* pvx,		// 传入速度指针
-	float* pvy,
-	RECT rct,
-	bool is_board,
-	bool left,
-	bool up,
-	bool right,
-	bool down
-)
+// 单个碰撞箱和单个小球的碰撞处理
+// ball						小球
+// rct						碰撞箱区域
+// is_board					是否为挡板碰撞判定
+// left, up, right, down	该碰撞箱四周分别是否有活动空间
+//
+// 返回值：参见 HIT_ 系列宏
+int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bool up = true, bool right = true, bool down = true)
 {
+	// 得到小球上一帧的坐标
+	float last_x = (ball->x - ball->vx);
+	float last_y = (ball->y - ball->vy);
+
+	// 首先需要保证矩形和圆有重叠
+	if (!(GetDistance_PointToRect(ball->x, ball->y, rct) <= g_nBallRadius * 0.98f))
+	{
+		return HIT_NONE;
+	}
+
 	int return_flag = HIT_NONE;
 	bool abnormal_flag = false;	// 异常碰撞标记
 
@@ -672,25 +708,25 @@ int BasicHit(
 
 	// 穿越碰撞箱边界标记
 	bool cross_left =
-		rct.left > x
-		&& fabsf(x - rct.left) <= BALL_RADIUS
+		rct.left > ball->x
+		&& fabsf(ball->x - rct.left) <= g_nBallRadius
 		&& left
-		&& *pvx > 0;
+		&& ball->vx > 0;
 	bool cross_right =
-		x > rct.right
-		&& fabsf(x - rct.right) <= BALL_RADIUS
+		ball->x > rct.right
+		&& fabsf(ball->x - rct.right) <= g_nBallRadius
 		&& right
-		&& *pvx < 0;
+		&& ball->vx < 0;
 	bool cross_top =
-		rct.top > y
-		&& fabsf(y - rct.top) <= BALL_RADIUS
+		rct.top > ball->y
+		&& fabsf(ball->y - rct.top) <= g_nBallRadius
 		&& up
-		&& *pvy > 0;
+		&& ball->vy > 0;
 	bool cross_bottom =
-		y > rct.bottom
-		&& fabsf(y - rct.bottom) <= BALL_RADIUS
+		ball->y > rct.bottom
+		&& fabsf(ball->y - rct.bottom) <= g_nBallRadius
 		&& down
-		&& *pvy < 0;
+		&& ball->vy < 0;
 
 	// 标记是否需要判断顶点碰撞
 	bool vertex_judge_flag = true;
@@ -733,7 +769,7 @@ int BasicHit(
 			if (left && right)
 			{
 				fVertex_X =
-					(fabsf(x - rct.left) < fabsf(x - rct.right)) ?
+					(fabsf(ball->x - rct.left) < fabsf(ball->x - rct.right)) ?
 					(float)rct.left : (float)rct.right;
 			}
 
@@ -756,7 +792,7 @@ int BasicHit(
 			if (up && down)
 			{
 				fVertex_Y =
-					(fabsf(y - rct.top) < fabsf(y - rct.bottom)) ?
+					(fabsf(ball->y - rct.top) < fabsf(ball->y - rct.bottom)) ?
 					(float)rct.top : (float)rct.bottom;
 			}
 			else if (up)		fVertex_Y = (float)rct.top;
@@ -782,7 +818,17 @@ int BasicHit(
 
 		// 获取碰撞时的小球圆心坐标（即与顶点相切时的坐标）
 		float fCollisionX, fCollisionY;
-		if (!GetTangentCirclePoint(fVertex_X, fVertex_Y, last_x, last_y, x, y, BALL_RADIUS, &fCollisionX, &fCollisionY))
+		if (!GetTangentCirclePoint(
+			fVertex_X,
+			fVertex_Y,
+			last_x,
+			last_y,
+			ball->x,
+			ball->y,
+			(float)g_nBallRadius,
+			&fCollisionX,
+			&fCollisionY
+		))
 		{
 			// 没有相切，说明顶点碰撞不成立
 			goto tag_after_vertex_colision;
@@ -790,7 +836,7 @@ int BasicHit(
 
 		// 如果是真的相切，则相切时矩形到圆心的最近距离应该等于小球半径
 		// 但如果此时小于半径，那么说明是假相切
-		if (GetDistance_PointToRect(fCollisionX, fCollisionY, rct) < BALL_RADIUS * 0.98f /* 允许一点误差 */)
+		if (GetDistance_PointToRect(fCollisionX, fCollisionY, rct) < g_nBallRadius * 0.98f /* 允许一点误差 */)
 		{
 			goto tag_after_vertex_colision;
 		}
@@ -806,14 +852,18 @@ int BasicHit(
 		float f_radianNormal = f_radianReflectingSurface + PI / 2 /* 或 - PI / 2 */;
 
 		// 求小球入射角度
-		float f_radianIncidence = atan2f(*pvy, *pvx);
+		float f_radianIncidence = atan2f(ball->vy, ball->vx);
 
 		// 将小球速度沿法线对称，求得新的速度角度
 		float f_radianReflection = 2 * f_radianNormal - f_radianIncidence;
 
 		// 求速度
-		*pvx = cosf(f_radianReflection) * BALL_SPEED;
-		*pvy = sinf(f_radianReflection) * BALL_SPEED;
+		ball->vx = cosf(f_radianReflection) * BALL_SPEED;
+		ball->vy = sinf(f_radianReflection) * BALL_SPEED;
+
+		// 修正小球坐标到相切时的坐标
+		ball->x = fCollisionX;
+		ball->y = fCollisionY;
 
 		isVertexCollision = true;	// 标记发生顶点碰撞
 	}
@@ -832,7 +882,7 @@ tag_after_vertex_colision:
 		// 跨越碰撞箱左右边界，则水平速度反转
 		if (cross_left || cross_right)
 		{
-			*pvx = -*pvx;
+			ball->vx = -ball->vx;
 
 			return_flag = HIT_NORMAL;
 		}
@@ -842,20 +892,20 @@ tag_after_vertex_colision:
 			// 与挡板碰撞时，需要根据小球和挡板的碰撞位置改变其 vx
 			if (is_board)
 			{
-				*pvx = (float)(x - g_nBoardCenterX) / BOARD_HALF_WIDTH * BALL_SPEED;
-				if (fabsf(*pvx) > BALL_SPEED)
+				ball->vx = (float)(ball->x - g_nBoardCenterX) / BOARD_HALF_WIDTH * BALL_SPEED;
+				if (fabsf(ball->vx) > BALL_SPEED)
 				{
-					*pvx = *pvx > 0 ? BALL_SPEED : -BALL_SPEED;
-					*pvy = 0;
+					ball->vx = ball->vx > 0 ? BALL_SPEED : -BALL_SPEED;
+					ball->vy = 0;
 				}
 				else
 				{
-					*pvy = (*pvy < 0 ? 1 : -1) * sqrtf(BALL_SPEED * BALL_SPEED - *pvx * *pvx);
+					ball->vy = (ball->vy < 0 ? 1 : -1) * sqrtf(BALL_SPEED * BALL_SPEED - ball->vx * ball->vx);
 				}
 			}
 			else
 			{
-				*pvy = -*pvy;
+				ball->vy = -ball->vy;
 			}
 
 			return_flag = HIT_NORMAL;
@@ -871,7 +921,7 @@ tag_after_vertex_colision:
 	// 播放碰撞声
 
 	// 非调试模式下，只要有碰撞就发出声音
-	if (!g_bDebugMode
+	if (!g_bOnlyVertexCollisionSound
 		&& return_flag != HIT_NONE)
 	{
 		PlayHitSound(false);
@@ -882,55 +932,18 @@ tag_after_vertex_colision:
 	{
 		PlayHitSound(false);
 	}
-
-	return return_flag;
-
-}// SinglePointHit
-
-// 单个碰撞箱和单个小球的碰撞处理
-// ball						小球
-// rct						碰撞箱区域
-// is_board					是否为挡板碰撞判定
-// left, up, right, down	该碰撞箱四周分别是否有活动空间
-//
-// 返回值：参见 HIT_ 系列宏
-int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bool up = true, bool right = true, bool down = true)
-{
-	// 得到小球上一帧的坐标
-	float last_x = (ball->x - ball->vx);
-	float last_y = (ball->y - ball->vy);
-
-	// 首先需要保证矩形和圆有重叠
-	if (!(GetDistance_PointToRect(ball->x, ball->y, rct) <= BALL_RADIUS * 0.98f))
-	{
-		return HIT_NONE;
-	}
-
-	float return_flag = BasicHit(
-		ball->x,
-		ball->y,
-		last_x,
-		last_y,
-		&ball->vx,
-		&ball->vy,
-		rct,
-		is_board,
-		left,
-		up,
-		right,
-		down
-	);
-
-	// 发生了碰撞，那么就要把小球从墙里“拔”出来（回到上一帧的位置），避免穿墙效果
-	if (return_flag != HIT_NONE)
+	
+	// 回溯坐标，即发生碰撞后，把小球从墙里“拔”出来（回到上一帧的位置），避免穿墙效果
+	// 如果发生的是顶点碰撞，那么在前面就已经进行了相切位置修正，就不需要回溯坐标了
+	if (!isVertexCollision && return_flag != HIT_NONE)
 	{
 		ball->x = last_x;
 		ball->y = last_y;
 	}
 
-	// 碰撞处理
 	return return_flag;
-}
+
+}// SingleRect_BallHit
 
 // 消除砖块后，调用此函数幸运创建道具
 // x, y 被消除砖块的位置
@@ -974,7 +987,7 @@ bool IsEmptyBlock(int id)
 	return id < 0 || g_pstMap[id].type == EMPTY;
 }
 
-// 小球的碰撞处理（使小球反弹，删除被碰撞砖块）
+// 对单个小球的碰撞处理（使小球反弹，删除被碰撞砖块）
 // 以及判定小球出界
 void SingleBallHit(Ball* ball)
 {
@@ -983,9 +996,9 @@ void SingleBallHit(Ball* ball)
 	RECT rctLeft = { -border_thickness,0,1,getheight() };
 	RECT rctRight = { g_nMapW * SIDE_LEN - 1,0,g_nMapW * SIDE_LEN + border_thickness,getheight() };
 	RECT rctTop = { -border_thickness,-border_thickness,g_nMapW * SIDE_LEN + border_thickness,1 };
-	SingleBrick_BallHit(ball, rctLeft, false);
-	SingleBrick_BallHit(ball, rctRight, false);
-	SingleBrick_BallHit(ball, rctTop, false);
+	SingleRect_BallHit(ball, rctLeft, false);
+	SingleRect_BallHit(ball, rctRight, false);
+	SingleRect_BallHit(ball, rctTop, false);
 
 	// 出界判定
 	if (ball->y > getheight() - STATE_BAR_HEIGHT)
@@ -1033,7 +1046,7 @@ void SingleBallHit(Ball* ball)
 		{
 			RECT rct = g_pstMap[current].rct;		// 当前方块碰撞箱
 
-			int hit_flag = SingleBrick_BallHit(
+			int hit_flag = SingleRect_BallHit(
 				ball,
 				rct,
 				false,
@@ -1068,7 +1081,7 @@ void SingleBallHit(Ball* ball)
 		g_nBoardCenterX + BOARD_HALF_WIDTH,
 		BOARD_Y + BOARD_HALF_THICKNESS
 	};
-	SingleBrick_BallHit(ball, rctBoard, true);
+	SingleRect_BallHit(ball, rctBoard, true);
 }
 
 // 所有小球的处理
