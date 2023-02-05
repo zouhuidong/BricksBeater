@@ -54,11 +54,6 @@
 
 #define PROP_MAX_NUM		1024	// 最大道具数量
 
-// 道具出现概率（百分比）
-#define PROBABILITY_3X			8
-#define PROBABILITY_SHOOT_3		12
-#define PROBABILITY_HEART		5
-
 // 道具下落速度
 #define PROP_DROP_SPEED			0.2f
 
@@ -109,6 +104,11 @@ int g_nInnerInterval = 1;		// 方块外周留空边距
 
 // 小球半径
 int g_nBallRadius = 3;
+
+// 道具出现概率（百分比）
+int g_nProbability_3X = 8;
+int g_nProbability_Shoot_3 = 12;
+int g_nProbability_Heart = 5;
 
 // 图像资源
 IMAGE g_imgRestart;
@@ -177,14 +177,20 @@ void InitResource()
 	g_bDebugMode = GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("enable_debug_mode"), 0);
 	if (g_bDebugMode)
 	{
-		g_bOnlyVertexCollisionSound = 
+		g_bOnlyVertexCollisionSound =
 			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("only_vertex_collision_sound"), 0);
 		g_bBigScene =
 			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("enable_big_scene"), 0);
-		g_nInnerSideLen_BigScene = 
+		g_nInnerSideLen_BigScene =
 			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("big_scene_brick_inner_side_len"), 0);
 		g_nBallRadius_BigScene =
 			GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("big_scene_ball_radius"), 0);
+		
+		// 简单模式
+		if (GetIniFileInfoInt(SETTINGS_PATH, _T("debug"), _T("easy_mode"), 0))
+		{
+			g_nProbability_3X = 100;
+		}
 	}
 	if (g_bBigScene)
 	{
@@ -691,17 +697,41 @@ int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bo
 	if (ball->x >= rct.left && ball->x <= rct.right
 		&& ball->y >= rct.top && ball->y <= rct.bottom)
 	{
-		ball->x = (last_x + ball->x) / 2;
-		ball->y = (last_y + ball->y) / 2;
+		ball->x = last_x;
+		ball->y = last_y;
+
+		// 如果上一帧仍然陷在里面
+		if (ball->x >= rct.left && ball->x <= rct.right
+			&& ball->y >= rct.top && ball->y <= rct.bottom)
+		{
+			// 强制弹出小球
+			if (ball->vx > 0 && left)
+			{
+				ball->x = (float)(rct.left - g_nBallRadius);
+			}
+			else if (ball->vx < 0 && right)
+			{
+				ball->x = (float)(rct.right + g_nBallRadius);
+			}
+			if (ball->vy > 0 && up)
+			{
+				ball->y = (float)(rct.top - g_nBallRadius);
+			}
+			else if (ball->vy < 0 && down)
+			{
+				ball->y = (float)(rct.bottom + g_nBallRadius);
+			}
+		}
+
 		ball->vx *= -1 + rand() % 10 / 1000.f;
 		ball->vy *= -1 + rand() % 10 / 1000.f;
-	
+
 		// 对于挡板问题的特殊处理：直接跳出来
 		if (is_board)
 		{
 			ball->y = (float)(BOARD_Y - BOARD_HALF_THICKNESS - g_nBallRadius - 1);
 		}
-		
+
 		return HIT_NORMAL;
 	}
 
@@ -850,10 +880,10 @@ int SingleRect_BallHit(Ball* ball, RECT rct, bool is_board, bool left = true, bo
 		// 求法线弧度
 		float f_radianNormal = f_radianReflectingSurface + PI / 2 /* 或 - PI / 2 */;
 
-		// 求小球入射角度
+		// 求小球入射弧度
 		float f_radianIncidence = atan2f(ball->vy, ball->vx);
 
-		// 将小球速度沿法线对称，求得新的速度角度
+		// 将小球速度沿法线对称，求得新的速度弧度
 		float f_radianReflection = 2 * f_radianNormal - f_radianIncidence;
 
 		// 求速度
@@ -925,13 +955,13 @@ tag_after_vertex_colision:
 	{
 		PlayHitSound(false);
 	}
-	
+
 	// 回溯坐标，即发生碰撞后，把小球从墙里“拔”出来（回到上一帧的位置），避免穿墙效果
 	// 如果发生的是顶点碰撞，那么在前面就已经进行了相切位置修正，就不需要回溯坐标了
 	if (!isVertexCollision && return_flag != HIT_NONE)
 	{
-		ball->x = (last_x + ball->x) / 2;
-		ball->y = (last_y + ball->y) / 2;
+		ball->x = last_x;
+		ball->y = last_y;
 	}
 
 	return return_flag;
@@ -950,9 +980,9 @@ void GeneratePropByLuck(float x, float y)
 
 	// 道具表
 	int pnProps[3][2] = {
-		{PROP_3X,PROBABILITY_3X},
-		{PROP_SHOOT_3,PROBABILITY_SHOOT_3},
-		{PROP_HEART,PROBABILITY_HEART},
+		{PROP_3X,g_nProbability_3X},
+		{PROP_SHOOT_3,g_nProbability_Shoot_3},
+		{PROP_HEART,g_nProbability_Heart},
 	};
 
 	// 随机选取一个道具
@@ -1106,6 +1136,14 @@ void AllBallProcess()
 			// 小球运动处理
 			g_pstBalls[i].x += g_pstBalls[i].vx + rand() % 10 / 100.f /* 添加随机扰动，防止在某区域反弹死循环 */;
 			g_pstBalls[i].y += g_pstBalls[i].vy + rand() % 10 / 100.f;
+
+			// 防止出边界
+			if (g_pstBalls[i].x < g_nBallRadius)
+				g_pstBalls[i].x = g_nBallRadius;
+			else if (g_pstBalls[i].x > getwidth() - g_nBallRadius)
+				g_pstBalls[i].x = getwidth() - g_nBallRadius;
+			if (g_pstBalls[i].y < g_nBallRadius)	// y 方向只需处理上边界
+				g_pstBalls[i].y = g_nBallRadius;
 		}
 	}
 
